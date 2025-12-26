@@ -1,0 +1,115 @@
+services:
+  db:
+    image: postgres:16
+    container_name: rd_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${DB_NAME}"
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  migrations:
+    image: golang:1.25
+    container_name: rd_db_migrations
+    depends_on:
+      - db
+    volumes:
+      - ./migrations:/migrations
+    working_dir: /migrations
+    command: >
+      sh -c "
+        go install github.com/pressly/goose/v3/cmd/goose@latest &&
+        goose -dir /migrations postgres \"$DB_DSN\" up
+      "
+  # auth:
+  #   build: ./services/auth
+  #   container_name: rd_auth
+  #   depends_on:
+  #     - db
+  #     - migrations
+  #   environment:
+  #     DB_DRIVER: "${DB_DRIVER}"
+  #     DB_HOST: "${DB_HOST}"
+  #     DB_PORT: ${DB_PORT}
+  #     DB_NAME: "${DB_NAME}"
+  #     DB_USER: "${DB_USER}"
+  #     DB_PASSWORD: "${DB_PASSWORD}"
+  #   ports:
+  #     - "8081:8080"
+  # cases:
+  #   build: ./services/cases
+  #   container_name: rd_cases
+  #   depends_on:
+  #     - db
+  #     - migrations
+  #   environment:
+  #     DB_DRIVER: "${DB_DRIVER}"
+  #     DB_HOST: "${DB_HOST}"
+  #     DB_PORT: ${DB_PORT}
+  #     DB_NAME: "${DB_NAME}"
+  #     DB_USER: "${DB_USER}"
+  #     DB_PASSWORD: "${DB_PASSWORD}"
+  #   ports:
+  #     - "8082:8080"
+  orders-prod:
+    profiles: ["prod"]
+    build: ./services/orders
+    container_name: rd_orders
+    depends_on:
+      - db
+      - migrations
+    environment:
+      DB_DRIVER: "${DB_DRIVER}"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: ${DB_PORT}
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+    ports:
+      - "8083:8080"
+
+  orders-dev:
+    profiles: ["dev"]
+    image: golang:1.25
+    container_name: rd_orders_dev
+    working_dir: /app
+    volumes:
+      - ./services/orders:/app
+    command: >
+      sh -c "
+        go install github.com/air-verse/air@latest &&
+        air
+      "
+    depends_on:
+      - db
+      - migrations
+    environment:
+      DB_DRIVER: "${DB_DRIVER}"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: ${DB_PORT}
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+    ports:
+      - "8083:8080"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: rd_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: adminpassword
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+    depends_on:
+      - db
+
+volumes:
+  db_data:
