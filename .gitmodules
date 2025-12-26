@@ -1,0 +1,6 @@
+[submodule "frontend"]
+	path = frontend
+	url = git@github.com:rovno-dev/rovno-dev-site-frontend.git
+[submodule "backend"]
+	path = backend
+	url = git@github.com:rovno-dev/rovno-dev-server.git
