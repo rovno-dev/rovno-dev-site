@@ -1,4 +1,15 @@
 services:
+  nginx:
+    image: nginx:alpine
+    container_name: rd_gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - orders
+      - frontend
   db:
     image: postgres:16
     container_name: rd_db
@@ -11,78 +22,79 @@ services:
       - "${DB_PORT}:${DB_PORT}"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   migrations:
     image: golang:1.25
-    container_name: rd_db_migrations
-    depends_on:
-      - db
+    container_name: rd_migrations
     volumes:
-      - ./migrations:/migrations
+      - ./backend/migrations:/migrations
+      # - ./.env:/app/.env
     working_dir: /migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_DSN: "${DB_DSN}"
     command: >
       sh -c "
         go install github.com/pressly/goose/v3/cmd/goose@latest &&
-        goose -dir /migrations postgres \"$DB_DSN\" up
+        goose -dir /migrations postgres \"$$DB_DSN\" up
       "
-  # auth:
-  #   build: ./services/auth
-  #   container_name: rd_auth
-  #   depends_on:
-  #     - db
-  #     - migrations
-  #   environment:
-  #     DB_DRIVER: "${DB_DRIVER}"
-  #     DB_HOST: "${DB_HOST}"
-  #     DB_PORT: ${DB_PORT}
-  #     DB_NAME: "${DB_NAME}"
-  #     DB_USER: "${DB_USER}"
-  #     DB_PASSWORD: "${DB_PASSWORD}"
-  #   ports:
-  #     - "8081:8080"
-  # cases:
-  #   build: ./services/cases
-  #   container_name: rd_cases
-  #   depends_on:
-  #     - db
-  #     - migrations
-  #   environment:
-  #     DB_DRIVER: "${DB_DRIVER}"
-  #     DB_HOST: "${DB_HOST}"
-  #     DB_PORT: ${DB_PORT}
-  #     DB_NAME: "${DB_NAME}"
-  #     DB_USER: "${DB_USER}"
-  #     DB_PASSWORD: "${DB_PASSWORD}"
-  #   ports:
-  #     - "8082:8080"
-  orders-prod:
-    profiles: ["prod"]
-    build: ./services/orders
-    container_name: rd_orders
-    depends_on:
-      - db
-      - migrations
-    environment:
-      DB_DRIVER: "${DB_DRIVER}"
-      DB_HOST: "${DB_HOST}"
-      DB_PORT: ${DB_PORT}
-      DB_NAME: "${DB_NAME}"
-      DB_USER: "${DB_USER}"
-      DB_PASSWORD: "${DB_PASSWORD}"
-    ports:
-      - "8083:8080"
-
-  orders-dev:
-    profiles: ["dev"]
+  goose-shell:
     image: golang:1.25
-    container_name: rd_orders_dev
+    container_name: rd_goose_shell
+    volumes:
+      - ./backend/migrations:/migrations
+      # - ./.env:/app/.env
+    working_dir: /migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_DSN=${DB_DSN:-postgres://root:root@db:5432/rovno_dev?sslmode=disable}
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      echo 'Installing goose...' &&
+      go install github.com/pressly/goose/v3/cmd/goose@latest &&
+      echo 'Goose installed.' &&
+      echo 'Database: $$DB_DSN' &&
+      echo '' &&
+      echo 'Available commands:' &&
+      echo '  goose status' &&
+      echo '  goose up' &&
+      echo '  goose down' &&
+      echo '  goose create <name> sql' &&
+      echo '' &&
+      /bin/bash
+      "
+  frontend:
+    container_name: rd_frontend
+    build:
+      context: ./frontend
+      target: ${FRONTEND_TARGET}
     working_dir: /app
     volumes:
-      - ./services/orders:/app
-    command: >
-      sh -c "
-        go install github.com/air-verse/air@latest &&
-        air
-      "
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV}
+  orders:
+    container_name: rd_orders
+    build:
+      context: ./backend/services/orders
+      target: ${ORDERS_TARGET:-prod}
+    working_dir: /app
+    volumes:
+      - ./backend/services/orders:/app
     depends_on:
       - db
       - migrations
@@ -93,23 +105,11 @@ services:
       DB_NAME: "${DB_NAME}"
       DB_USER: "${DB_USER}"
       DB_PASSWORD: "${DB_PASSWORD}"
+      DB_SSLMODE: "${DB_SSLMODE}"
     ports:
-      - "8083:8080"
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: rd_pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@example.com
-      PGADMIN_DEFAULT_PASSWORD: adminpassword
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-    ports:
-      - "5050:80"
-    volumes:
-      - ./pgadmin/servers.json:/pgadmin4/servers.json
-    depends_on:
-      - db
-
+      - "${ORDERS_PORT}:${APP_PORT}"
+    # profiles:
+    #   - dev
+    #   - prod
 volumes:
   db_data:
