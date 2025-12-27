@@ -74,6 +74,7 @@ services:
       echo '' &&
       /bin/bash
       "
+  # TODO: UPDATE Hot reload on dev
   frontend:
     container_name: rd_frontend
     build:
@@ -87,6 +88,8 @@ services:
       - "${FRONTEND_PORT}:3000"
     environment:
       NODE_ENV: ${NODE_ENV}
+      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING}
   orders:
     container_name: rd_orders
     build:
