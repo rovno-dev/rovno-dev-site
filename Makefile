@@ -57,3 +57,13 @@ endif
 
 logs:
 	docker compose $(COMPOSE_ARGS) logs -f
+
+commitAll:
+	# 1. Commit all submodules
+	@echo "=== Committing Submodules ==="
+	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $name"'
+
+	# 2. Commit parent repo (including submodule pointers)
+	@echo "=== Committing Parent ==="
+	git add -A
+	git commit -m "$(MSG)"
