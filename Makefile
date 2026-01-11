@@ -67,3 +67,6 @@ commitAll:
 	@echo "=== Committing Parent ==="
 	git add -A
 	git commit -m "$(MSG)"
+
+pushAll:
+	git push --recurse-submodules=on-demand
