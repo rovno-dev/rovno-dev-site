@@ -58,22 +58,53 @@ endif
 logs:
 	docker compose $(COMPOSE_ARGS) logs -f
 
-# 1. Update everything to the latest upstream versions
-update-all:
-	@echo "=== Pulling Parent ==="
-	git pull
-	@echo "=== Updating Submodules to latest remote commits ==="
-	git submodule update --remote --merge
 
-# 2. Push safely
+# =====
+# Git actions
+# =====
+
+# Push safely
 push-all:
-	@echo "=== Pushing All ==="
+	@echo "=== Pushing submodules ==="
+	git submodule foreach 'git push || echo "Failed to push"'
+	@echo "=== Pushing parent repo ==="
 	git push --recurse-submodules=on-demand
 
-# 3. Batch Commit (Use with caution)
+# Batch Commit (Use with caution)
 commit-all:
 	@echo "=== Committing Submodules ==="
 	git submodule foreach 'git add . && git commit -m "$(MSG)" || echo "Nothing to commit"'
 	@echo "=== Committing Parent ==="
 	git add .
+	git commit -m "$(MSG)"
+
+	# 1. Checkout a branch in all submodules (Required before merging!)
+checkoutAll:
+ifndef BRANCH
+	$(error BRANCH is undefined. Usage: make checkoutAll BRANCH=main)
+endif
+	@echo "=== Checking out $(BRANCH) in all submodules ==="
+	git submodule foreach 'git checkout $(BRANCH) || echo "Branch $(BRANCH) not found in $$name"'
+
+# Merge a specific branch into current submodule state
+merge-all:
+ifndef BRANCH
+	$(error BRANCH is undefined. Usage: make mergeAll BRANCH=origin/main)
+endif
+	@echo "=== Merging $(BRANCH) into all submodules ==="
+	git submodule foreach 'git merge $(BRANCH) || echo "Failed to merge in $$name"'
+
+# 3. Pull/Update (Fetch new code)
+pull-all:
+	@echo "=== Pulling and Re-basing Submodules ==="
+	# --remote fetches the latest from upstream
+	# --rebase ensures you apply your changes on top of upstream
+	git submodule update --recursive --remote --rebase
+
+# 4. Commit everything
+commit-all:
+	@echo "=== Committing Submodules ==="
+	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $$name"'
+	@echo "=== Committing Parent ==="
+	git add -A
 	git commit -m "$(MSG)"
