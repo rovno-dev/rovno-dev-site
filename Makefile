@@ -58,15 +58,22 @@ endif
 logs:
 	docker compose $(COMPOSE_ARGS) logs -f
 
-commitAll:
-	# 1. Commit all submodules
-	@echo "=== Committing Submodules ==="
-	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $name"'
+# 1. Update everything to the latest upstream versions
+update-all:
+	@echo "=== Pulling Parent ==="
+	git pull
+	@echo "=== Updating Submodules to latest remote commits ==="
+	git submodule update --remote --merge
 
-	# 2. Commit parent repo (including submodule pointers)
-	@echo "=== Committing Parent ==="
-	git add -A
-	git commit -m "$(MSG)"
-
-pushAll:
+# 2. Push safely
+push-all:
+	@echo "=== Pushing All ==="
 	git push --recurse-submodules=on-demand
+
+# 3. Batch Commit (Use with caution)
+commit-all:
+	@echo "=== Committing Submodules ==="
+	git submodule foreach 'git add . && git commit -m "$(MSG)" || echo "Nothing to commit"'
+	@echo "=== Committing Parent ==="
+	git add .
+	git commit -m "$(MSG)"
