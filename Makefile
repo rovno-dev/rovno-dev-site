@@ -2,28 +2,38 @@
 
 ENV ?= prod
 
-COMPOSE_FILE :=
-ifeq ($(ENV),dev)
-	ifneq (,$(wildcard .env.dev))
-			include .env.dev
-			export
-	endif
-	ENV_FILE_FLAG := --env-file .env.dev
-	COMPOSE_ARGS := $(COMPOSE_FILE) --profile dev $(ENV_FILE_FLAG)
-else
-	ifneq (,$(wildcard .env.prod))
-			include .env.prod
-			export
-	endif
-	ENV_FILE_FLAG := --env-file .env.prod
-	COMPOSE_ARGS := $(COMPOSE_FILE) --profile prod $(ENV_FILE_FLAG)
+# 1. Determine the Env File
+ENV_FILE := .env.$(ENV)
+
+# 2. Safely include the env file if it exists
+# We use -include to ignore errors if file is missing, 
+# but we check for directory existence to avoid the "read directory" error.
+ifneq (,$(wildcard $(ENV_FILE)))
+    # Ensure it is a file, not a dir, before including
+    ifneq ($(wildcard $(ENV_FILE)/.*),)
+        $(error $(ENV_FILE) is a directory! It must be a file)
+    else
+        include $(ENV_FILE)
+        export
+    endif
+endif
+
+# 3. Construct Docker Compose Arguments
+# Start with the profile and env file
+COMPOSE_ARGS := --profile $(ENV) --env-file $(ENV_FILE)
+
+# 4. Safely Handle COMPOSE_FILE
+# Only add it if the variable is set and not empty. 
+# IMPORTANT: We must prepend '-f' so Docker knows it's a file, not a command.
+ifneq ($(strip $(COMPOSE_FILE)),)
+    COMPOSE_ARGS := -f $(COMPOSE_FILE) $(COMPOSE_ARGS)
 endif
 
 help:
 	@echo "Usage:"
-	@echo "  make up [ENV=dev|prod]      - Start services (runs npm run dev locally if ENV=dev)"
+	@echo "  make up [ENV=dev|prod]      - Start services"
 	@echo "  make down                   - Stop all services"
-	@echo "  make rebuild [ENV=dev|prod] - Rebuild and restart (force recreate)"
+	@echo "  make rebuild [ENV=dev|prod] - Rebuild and restart"
 	@echo "  make logs                   - View logs"
 
 up:
@@ -34,7 +44,8 @@ ifeq ($(ENV),dev)
 	@echo "2. Waiting for DB/Backend to warm up..."
 	@sleep 2
 	@echo "3. Starting Local Frontend..."
-	cd frontend && npm run dev
+	# Ensure 'frontend' dir exists before cd
+	@if [ -d "frontend" ]; then cd frontend && npm run dev; else echo "Frontend directory not found"; fi
 else
 	# Prod Mode
 	docker compose $(COMPOSE_ARGS) up -d
@@ -45,15 +56,7 @@ stop:
 
 rebuild:
 	@echo "Rebuilding environment: $(ENV)"
-ifeq ($(ENV),dev)
-	# Rebuild backend services with force-recreate
 	docker compose $(COMPOSE_ARGS) up -d --build --force-recreate
-# 	@echo "Starting Local Frontend..."
-# 	cd frontend && npm run dev
-else
-	# Prod Mode
-	docker compose $(COMPOSE_ARGS) up -d --build --force-recreate
-endif
 
 logs:
 	docker compose $(COMPOSE_ARGS) logs -f
@@ -63,40 +66,33 @@ logs:
 # Git actions
 # =====
 
-# Commit everything
-commit-all:
-	@echo "=== Committing Submodules ==="
-	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $$name"'
-	@echo "=== Committing Parent ==="
-	git add -A
-	git commit -m "$(MSG)"
-
-# Push safely
 push-all:
 	@echo "=== Pushing submodules ==="
 	git submodule foreach 'git push || echo "Failed to push"'
 	@echo "=== Pushing parent repo ==="
 	git push --recurse-submodules=on-demand
 
-# Checkout a branch in all submodules (Required before merging!)
-checkout-all:
+checkoutAll:
 ifndef BRANCH
 	$(error BRANCH is undefined. Usage: make checkoutAll BRANCH=main)
 endif
 	@echo "=== Checking out $(BRANCH) in all submodules ==="
 	git submodule foreach 'git checkout $(BRANCH) || echo "Branch $(BRANCH) not found in $$name"'
 
-# Merge a specific branch into current submodule state
 merge-all:
 ifndef BRANCH
-	$(error BRANCH is undefined. Usage: make mergeAll BRANCH=origin/main)
+	$(error BRANCH is undefined. Usage: make merge-all BRANCH=origin/main)
 endif
 	@echo "=== Merging $(BRANCH) into all submodules ==="
 	git submodule foreach 'git merge $(BRANCH) || echo "Failed to merge in $$name"'
 
-# Pull/Update (Fetch new code)
 pull-all:
 	@echo "=== Pulling and Re-basing Submodules ==="
-	# --remote fetches the latest from upstream
-	# --rebase ensures you apply your changes on top of upstream
 	git submodule update --recursive --remote --rebase
+
+commit-all:
+	@echo "=== Committing Submodules ==="
+	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $$name"'
+	@echo "=== Committing Parent ==="
+	git add -A
+	git commit -m "$(MSG)"
