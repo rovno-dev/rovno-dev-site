@@ -1,66 +1,44 @@
 .PHONY: up stop rebuild help logs
 
+# Default environment is prod
 ENV ?= prod
-
-# 1. Determine the Env File
 ENV_FILE := .env.$(ENV)
+CONTAINERS ?= ""
 
-# 2. Safely include the env file if it exists
-# We use -include to ignore errors if file is missing, 
-# but we check for directory existence to avoid the "read directory" error.
-ifneq (,$(wildcard $(ENV_FILE)))
-    # Ensure it is a file, not a dir, before including
-    ifneq ($(wildcard $(ENV_FILE)/.*),)
-        $(error $(ENV_FILE) is a directory! It must be a file)
-    else
-        include $(ENV_FILE)
-        export
-    endif
-endif
+# 1. Base Docker Compose Command
+# Always loads standard docker-compose.yml and the chosen env file
+DOCKER_CMD := docker compose --profile $(ENV) --env-file $(ENV_FILE) -f docker-compose.yml
 
-# 3. Construct Docker Compose Arguments
-# Start with the profile and env file
-COMPOSE_ARGS := --profile $(ENV) --env-file $(ENV_FILE)
-
-# 4. Safely Handle COMPOSE_FILE
-# Only add it if the variable is set and not empty. 
-# IMPORTANT: We must prepend '-f' so Docker knows it's a file, not a command.
-ifneq ($(strip $(COMPOSE_FILE)),)
-    COMPOSE_ARGS := -f $(COMPOSE_FILE) $(COMPOSE_ARGS)
+# 2. Add Dev Overrides
+# If ENV=dev, append the dev compose file. Docker automatically merges them.
+ifeq ($(ENV),dev)
+	DOCKER_CMD += -f docker-compose.dev.yml
 endif
 
 help:
 	@echo "Usage:"
 	@echo "  make up [ENV=dev|prod]      - Start services"
-	@echo "  make down                   - Stop all services"
+	@echo "  make stop                   - Stop all services"
 	@echo "  make rebuild [ENV=dev|prod] - Rebuild and restart"
 	@echo "  make logs                   - View logs"
 
 up:
 	@echo "Starting environment: $(ENV)"
-ifeq ($(ENV),dev)
-	@echo "1. Starting Backend Services (Docker)..."
-	docker compose $(COMPOSE_ARGS) up -d
-	@echo "2. Waiting for DB/Backend to warm up..."
-	@sleep 2
-	@echo "3. Starting Local Frontend..."
-	# Ensure 'frontend' dir exists before cd
-	@if [ -d "frontend" ]; then cd frontend && npm run dev; else echo "Frontend directory not found"; fi
-else
-	# Prod Mode
-	docker compose $(COMPOSE_ARGS) up -d
-endif
+	$(DOCKER_CMD) up -d
 
 stop:
-	docker compose stop
+	@echo "Stopping environment: $(ENV)"
+	$(DOCKER_CMD) stop
 
 rebuild:
 	@echo "Rebuilding environment: $(ENV)"
-	docker compose $(COMPOSE_ARGS) up -d --build --force-recreate
+	$(DOCKER_CMD) up -d --build $(CONTAINERS) --force-recreate
 
 logs:
-	docker compose $(COMPOSE_ARGS) logs -f
+	$(DOCKER_CMD) logs -f
 
+clean:
+	docker rm -f $$(docker ps -aq) || true
 
 # =====
 # Git actions

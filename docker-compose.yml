@@ -1,27 +1,4 @@
 services:
-  nginx:
-    profiles: ["prod"]
-    image: nginx:alpine
-    container_name: rd_gateway
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - orders
-      - frontend
-  nginx-dev:
-    profiles: ["dev"]
-    image: nginx:alpine
-    container_name: rd_gateway_dev
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - orders
   db:
     image: postgres:16
     container_name: rd_db
@@ -39,12 +16,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   migrations:
     image: golang:1.25
     container_name: rd_migrations
     volumes:
       - ./backend/migrations:/migrations
-      # - ./.env:/app/.env
     working_dir: /migrations
     depends_on:
       db:
@@ -52,64 +29,14 @@ services:
     environment:
       DB_DSN: "${DB_DSN}"
     command: >
-      sh -c "
-        go install github.com/pressly/goose/v3/cmd/goose@latest &&
-        goose -dir /migrations postgres \"$$DB_DSN\" up
-      "
-  goose-shell:
-    image: golang:1.25
-    container_name: rd_goose_shell
-    volumes:
-      - ./backend/migrations:/migrations
-      # - ./.env:/app/.env
-    working_dir: /migrations
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - DB_DSN=${DB_DSN:-postgres://root:root@db:5432/rovno_dev?sslmode=disable}
-    stdin_open: true
-    tty: true
-    entrypoint: ["/bin/bash", "-c"]
-    command: |
-      "
-      echo 'Installing goose...' &&
-      go install github.com/pressly/goose/v3/cmd/goose@latest &&
-      echo 'Goose installed.' &&
-      echo 'Database: $$DB_DSN' &&
-      echo '' &&
-      echo 'Available commands:' &&
-      echo '  goose status' &&
-      echo '  goose up' &&
-      echo '  goose down' &&
-      echo '  goose create <name> sql' &&
-      echo '' &&
-      /bin/bash
-      "
-  frontend:
-    container_name: rd_frontend
-    profiles: ["prod"]
-    build:
-      context: ./frontend
-      target: ${BUILD_TARGET}
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    ports:
-      - "${FRONTEND_PORT}:3000"
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
+      sh -c "go install github.com/pressly/goose/v3/cmd/goose@latest && goose -dir /migrations postgres \"$$DB_DSN\" up"
+
   orders:
     container_name: rd_orders
     build:
       context: ./backend/services/orders
-      target: ${BUILD_TARGET:-prod}
+      target: prod
     working_dir: /app
-    volumes:
-      - ./backend/services/orders:/app
     depends_on:
       - db
       - migrations
@@ -123,8 +50,46 @@ services:
       DB_SSLMODE: "${DB_SSLMODE}"
     ports:
       - "${ORDERS_PORT}:${APP_PORT}"
-    # profiles:
-    #   - dev
-    #   - prod
+
+  frontend:
+    container_name: rd_frontend
+    profiles: ["prod"]
+    build:
+      context: ./frontend
+      target: prod
+    working_dir: /app
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
+
+  nginx:
+    profiles: ["prod"]
+    image: nginx:alpine
+    container_name: rd_gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - orders
+      - frontend
+  goose-shell:
+    image: golang:1.25
+    container_name: rd_goose_shell
+    volumes:
+      - ./backend/migrations:/migrations
+    working_dir: /migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_DSN=${DB_DSN}
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash"]
+
 volumes:
   db_data:
