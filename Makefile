@@ -3,7 +3,7 @@
 # Default environment is prod
 ENV ?= prod
 ENV_FILE := .env.$(ENV)
-CONTAINERS ?= ""
+CONTAINERS ?= 
 
 # 1. Base Docker Compose Command
 # Always loads standard docker-compose.yml and the chosen env file

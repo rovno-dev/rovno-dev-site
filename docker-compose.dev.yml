@@ -4,8 +4,6 @@ services:
       target: dev
     volumes:
       - ./backend/services/orders:/app
-    environment:
-      DB_HOST: db
   nginx-dev:
     profiles: ["dev"]
     image: nginx:alpine
