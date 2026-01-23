@@ -63,6 +63,14 @@ logs:
 # Git actions
 # =====
 
+# Commit everything
+commit-all:
+	@echo "=== Committing Submodules ==="
+	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $$name"'
+	@echo "=== Committing Parent ==="
+	git add -A
+	git commit -m "$(MSG)"
+
 # Push safely
 push-all:
 	@echo "=== Pushing submodules ==="
@@ -70,16 +78,8 @@ push-all:
 	@echo "=== Pushing parent repo ==="
 	git push --recurse-submodules=on-demand
 
-# Batch Commit (Use with caution)
-commit-all:
-	@echo "=== Committing Submodules ==="
-	git submodule foreach 'git add . && git commit -m "$(MSG)" || echo "Nothing to commit"'
-	@echo "=== Committing Parent ==="
-	git add .
-	git commit -m "$(MSG)"
-
-	# 1. Checkout a branch in all submodules (Required before merging!)
-checkoutAll:
+# Checkout a branch in all submodules (Required before merging!)
+checkout-all:
 ifndef BRANCH
 	$(error BRANCH is undefined. Usage: make checkoutAll BRANCH=main)
 endif
@@ -94,17 +94,9 @@ endif
 	@echo "=== Merging $(BRANCH) into all submodules ==="
 	git submodule foreach 'git merge $(BRANCH) || echo "Failed to merge in $$name"'
 
-# 3. Pull/Update (Fetch new code)
+# Pull/Update (Fetch new code)
 pull-all:
 	@echo "=== Pulling and Re-basing Submodules ==="
 	# --remote fetches the latest from upstream
 	# --rebase ensures you apply your changes on top of upstream
 	git submodule update --recursive --remote --rebase
-
-# 4. Commit everything
-commit-all:
-	@echo "=== Committing Submodules ==="
-	git submodule foreach 'git add -A && git commit -m "$(MSG)" || echo "Nothing to commit in $$name"'
-	@echo "=== Committing Parent ==="
-	git add -A
-	git commit -m "$(MSG)"
